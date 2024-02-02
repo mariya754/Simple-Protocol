@@ -1,97 +1,70 @@
-# Client-Server Protocol
+# Testbed
 
-In this assignment, you will create a client and server in C that
-implement a simple protocol. You can test this in your testbed, and
-we will use it as the basis for the next assignment.
+In this assignment, you will create a networking testbed using the
+`ip2` suite and network namespaces. We will use this testbed in later
+assignments, and it will give you a template for similar testbeds that
+you might find useful when developing networked applications during
+your career.
 
-## Protocol Overview
+## Properties
 
-The protocol you will implement involves clients requesting work
-from the server, in the form of a number to factor. The server will
-send a number to a requesting client, and the client will return
-the factors to the server.
+Your testbed will have the following properties:
 
-A client can request work from the server multiple times, but the
-server will not send new work until the previous work is completed.
+ * A central node will act as a router, providing forwarding between
+   multiple endpoints.
+ * The endpoints will be able to communicate with one another.
+ * Each node, including both the router and endpoints, will operate in
+   its own network namespace.
+ * Individual router-endpoint links can have latency and packet loss
+   as specified below.
 
-## Protocol Details
+## Details
 
-The protocol should implement the following messages. All values are in
-hexadecimal.
+You will provide the following files:
 
-| Message Type (1B)        | Contents                                 |
-| ------------------------ | ---------------------------------------- |
-| `01` Client handshake    | `0124`                                   |
-| `02` Server handshake    | u16 client ID                            |
-| `03` Client work request | u16 client ID                            |
-| `04` Server work         | u32                                      |
-| `05` Server waiting      | none                                     |
-| `06` Client response     | u16 client ID; u16 length; [u32 factors] |
+ * `start_testbed.sh` -- This script creates the testbed.
+ * `stop_testbed.sh` -- This destroys a running testbed.
 
- * u16 refers to an unsigned 16-bit integer
- * u32 refers to an unsigned 32-bit integer
- * [u32 factors] refers to a variable-length (provided in the message) array
+The network within your testbed will conform to a CIDR (Classless
+Inter-Domain Routing) *netblock*. This is specified as a *base
+address* and a *prefix length*. The base address is in *dotted quad*
+notation, that is four numbers between 0 and 255 (inclusive),
+separated by dots. This is equivalent to a 32-bit integer. The prefix
+length is a number between 0 and 32 (inclusive), and it specifies how
+many bits of the base address are used to uniquely identify this
+network. The netblock is represented as `<base address>/<prefix length>`.
 
-All numbers are in network byte order.
+For example an IP address `84.138.61.197` in a network with a prefix
+length of 24 would be part of the netblock `84.138.61.0/24`, because
+24 bits is 3 bytes (or, more technically, *octets*), so the last octet
+is free to have any value. Since the smallest value for an octet is 0,
+that's what we use in the netblock's address.
 
-The server is free to choose client IDs and numbers to factor however it
-likes. The client is free to determine whether to request additional work
-or close the connection. The client ID supplied by the server must be
-used by the client in subsequent requests.
+Your testbed should have the following configuration:
+ * The router node should be in the `router` namespace, and have
+   an IP address of `186.192.0.1`
+ * There should be three endpoints:
+   1. The first should have namespace `ep1`, IP address `186.192.0.11`,
+      and *bidirectional* latency 10ms and packet loss 30%.
+   2. The second should have namespace `ep2`, IP address `186.192.0.12`,
+      and *bidirectional* latency 10ms and packet loss 10%.
+   1. The third should have namespace `ep3`, IP address `186.192.0.13`,
+      and *bidirectional* latency 100ms and packet loss 10%.
+ * The testbed network itself has a CIDR block `186.192.0.0/16`
 
-The message exchanges are:
+This configuration is shown in the following diagram:
+![Network Diagram](network.png)<br>*Network created by the above configuration*
 
- 1. Client sends a message `01` to the server on initial connection.
- 2. Servers replies to a message `01` with a message `02` *if this is
-    a new connection*. Otherwise, it closes the connection to the client.
- 3. Client replies to a message `02` with a message `03`.
- 4. Server replies to a message `03` with either:
-    1. message `04` with new work if it is not waiting for work to complete
-       by that client, or
-    2. message `05` if the client has already requested work but not replied
-       with a message `06`.
- 5. Client receiving a message `04` factors the provided number, and replies
-    with a message `06`.
- 6. Optionally, the client requests more work with a message `03`.
+Each endpoint should forward packets for the entire `186.192.0.0/16`
+subnet to the router.
 
-Any unexpected messages received by a client or the server should terminate
-the connection.
+You may create whatever additional scripts you might need to call from
+`start_testbed.sh` and `stop_testbed.sh`. All of the files needed to
+run your testbed (the start/stop scripts and any additional scripts)
+must be added, committed, and pushed to gitlab. Please ensure that any
+scripts which must be executable have been set as such in a way that
+git recognizes.
 
-## Implementation
-
-We have provided a function `factor` in `factor.c`, with a prototype
-in `factor.h`. This function takes a `uint32_t` (in host byte order),
-and returns a linked list of factors. You must free the memory used by
-this list when you are done with it.
-
-Your client should be contained in the file `client.c`, and must be
-written in C. It should take two argument on the command line:
- 1. The hostname or IP address of the server
- 2. The port on which the server is listening
-
-Your server should be contained in the file `server.c`, and must be
-written in C. It should take a port to listen on as its only command-line
-argument.
-
-The server should handle multiple clients using `poll`.
-
-Compilation should be done using a `Makefile`, which you must provide.
-
-All source code, headers, and your `Makefile` must be committed in git
-and pushed to your repository on the department gitlab server.
-
-### Tips
-
- * You may use `srand` and `rand` to generate random numbers, if you like,
-   but this is not necessary.
- * You will probably want to define a structure for each client's state
-   on the server, so that you know where in the protocol any particular
-   client is.
- * You will need to keep track of which client ID corresponds to which
-   socket file descriptor.
- * The `nfds` parameter to `poll` must be the index *past* the last used
-   entry in `fdarray`. Note that you do not have to use these names.
- * *Always* check the return values from any non-`void` function!
 
 ## Submission
 
@@ -104,8 +77,12 @@ Your grade for this assignment will be determined by the following
 criteria. Each higher grade must satisfy all of the grades below it,
 so to receive an A, you must satisfy all three sets of criteria.
 
-**C** The client can connect and send data to the server.
+**C** The `start_testbed.sh` script creates a testbed with the correct
+star topology, with all of the expected links.
 
-**B** The client and server implement the protocol correctly.
+**B** The testbed is able to forward traffic between arbitrarily
+selected endpoints, and all nodes are in their own namespaces.
 
-**A** The server supports multiple clients at once with `poll`.
+**A** The latencies and packet losses behave correctly for all links,
+and the `stop_testbed.sh` script correctly cleans up all of the
+namespaces and links.
